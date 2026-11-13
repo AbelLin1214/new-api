@@ -280,6 +280,7 @@ export function Dashboard() {
           currentFilters={modelFilters}
           onFilterChange={handleFilterChange}
           onReset={handleResetFilters}
+          showModelTokenFilters
         />
       </>
     ) : null

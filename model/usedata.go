@@ -148,26 +148,79 @@ func increaseQuotaData(quotaData *QuotaData) {
 	}
 }
 
-func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+func GetQuotaDataByUsername(username string, startTime int64, endTime int64, modelName string, tokenName string) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
-	err = DB.Table("quota_data").
+	tx := DB.Table("quota_data").
 		Select("user_id, username, model_name, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, sum(cache_read_tokens) as cache_read_tokens, sum(cache_creation_tokens) as cache_creation_tokens").
 		Where("username = ? and created_at >= ? and created_at <= ?", username, startTime, endTime).
-		Group("user_id, username, model_name, created_at").
-		Find(&quotaDatas).Error
+		Group("user_id, username, model_name, created_at")
+	if modelName != "" {
+		tx = tx.Where("model_name = ?", modelName)
+	}
+	if tokenName != "" {
+		ids, err := tokenIDsByNameForUser(tokenName, username)
+		if err != nil {
+			return nil, err
+		}
+		if len(ids) == 0 {
+			return quotaDatas, nil
+		}
+		tx = tx.Where("token_id IN ?", ids)
+	}
+	err = tx.Find(&quotaDatas).Error
 	return quotaDatas, err
 }
 
-func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+func GetQuotaDataByUserId(userId int, startTime int64, endTime int64, modelName string, tokenName string) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
-	err = DB.Table("quota_data").
+	tx := DB.Table("quota_data").
 		Select("user_id, username, model_name, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, sum(cache_read_tokens) as cache_read_tokens, sum(cache_creation_tokens) as cache_creation_tokens").
 		Where("user_id = ? and created_at >= ? and created_at <= ?", userId, startTime, endTime).
-		Group("user_id, username, model_name, created_at").
-		Find(&quotaDatas).Error
+		Group("user_id, username, model_name, created_at")
+	if modelName != "" {
+		tx = tx.Where("model_name = ?", modelName)
+	}
+	if tokenName != "" {
+		ids, err := tokenIDsByName(tokenName, userId)
+		if err != nil {
+			return nil, err
+		}
+		if len(ids) == 0 {
+			return quotaDatas, nil
+		}
+		tx = tx.Where("token_id IN ?", ids)
+	}
+	err = tx.Find(&quotaDatas).Error
 	return quotaDatas, err
+}
+
+// tokenIDsByName resolves a key name to token ids, optionally scoped to one
+// user. Key names are not unique across users, so callers narrow by user
+// whenever one is known. An unknown name resolves to no ids, which the
+// callers treat as an empty result rather than an error.
+func tokenIDsByName(tokenName string, userID int) ([]int, error) {
+	var ids []int
+	tx := DB.Model(&Token{}).Select("id").Where("name = ?", tokenName)
+	if userID != 0 {
+		tx = tx.Where("user_id = ?", userID)
+	}
+	if err := tx.Pluck("id", &ids).Error; err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func tokenIDsByNameForUser(tokenName string, username string) ([]int, error) {
+	var userIDs []int
+	if err := DB.Model(&User{}).Where("username = ?", username).Pluck("id", &userIDs).Error; err != nil {
+		return nil, err
+	}
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	return tokenIDsByName(tokenName, userIDs[0])
 }
 
 func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
@@ -180,14 +233,28 @@ func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*Quota
 	return quotaDatas, err
 }
 
-func GetAllQuotaDates(startTime int64, endTime int64, username string) (quotaData []*QuotaData, err error) {
+func GetAllQuotaDates(startTime int64, endTime int64, username string, modelName string, tokenName string) (quotaData []*QuotaData, err error) {
 	if username != "" {
-		return GetQuotaDataByUsername(username, startTime, endTime)
+		return GetQuotaDataByUsername(username, startTime, endTime, modelName, tokenName)
 	}
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
 	// only select model_name, sum(count) as count, sum(quota) as quota, model_name, created_at from quota_data group by model_name, created_at;
 	//err = DB.Table("quota_data").Where("created_at >= ? and created_at <= ?", startTime, endTime).Find(&quotaDatas).Error
-	err = DB.Table("quota_data").Select("model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, sum(cache_read_tokens) as cache_read_tokens, sum(cache_creation_tokens) as cache_creation_tokens, created_at").Where("created_at >= ? and created_at <= ?", startTime, endTime).Group("model_name, created_at").Find(&quotaDatas).Error
+	tx := DB.Table("quota_data").Select("model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, sum(cache_read_tokens) as cache_read_tokens, sum(cache_creation_tokens) as cache_creation_tokens, created_at").Where("created_at >= ? and created_at <= ?", startTime, endTime).Group("model_name, created_at")
+	if modelName != "" {
+		tx = tx.Where("model_name = ?", modelName)
+	}
+	if tokenName != "" {
+		ids, err := tokenIDsByName(tokenName, 0)
+		if err != nil {
+			return nil, err
+		}
+		if len(ids) == 0 {
+			return quotaDatas, nil
+		}
+		tx = tx.Where("token_id IN ?", ids)
+	}
+	err = tx.Find(&quotaDatas).Error
 	return quotaDatas, err
 }

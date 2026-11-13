@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/shopspring/decimal"
@@ -65,6 +66,30 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 			}
 			if result.RowsAffected != 1 {
 				return gorm.ErrRecordNotFound
+			}
+		}
+		// An admin "add" is a top-up paid for outside the online payment
+		// flow. Record it as a completed TopUp order in the same
+		// transaction, so it shows up in the user's Billing History
+		// (GetUserTopUps reads the top_ups table only, and online
+		// payments are the only other writers). Subtract/override change
+		// the balance without any payment, so they create no order.
+		if mode == "add" && after > user.Quota {
+			delta := int64(after - user.Quota)
+			now := common.GetTimestamp()
+			topUp := TopUp{
+				UserId:          user.Id,
+				Amount:          delta,
+				Money:           float64(delta) / common.QuotaPerUnit,
+				TradeNo:         fmt.Sprintf("MANUAL-%s%d", common.GetRandomString(6), now),
+				PaymentMethod:   PaymentMethodManual,
+				PaymentProvider: "",
+				CreateTime:      now,
+				CompleteTime:    now,
+				Status:          common.TopUpStatusSuccess,
+			}
+			if err := tx.Create(&topUp).Error; err != nil {
+				return err
 			}
 		}
 		adjustment = UserQuotaAdjustment{UserID: user.Id, Username: user.Username, Before: user.Quota, After: after}

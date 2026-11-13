@@ -69,7 +69,7 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 			}
 		}
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.AuthFlow{}, &model.TwoFA{}, &model.PasskeyCredential{}, &model.UserAccessToken{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.AuthFlow{}, &model.TwoFA{}, &model.PasskeyCredential{}, &model.UserAccessToken{}, &model.TopUp{}))
 	require.NoError(t, logDB.AutoMigrate(&model.Log{}, &model.AuditLog{}))
 	versionQuery := "SELECT version()"
 	if dialect == "sqlite" {
@@ -263,6 +263,25 @@ func TestManageUserQuotaRecordsTopupAndAudit(t *testing.T) {
 			require.NoError(t, db.First(&user, user.Id).Error)
 			assert.Equal(t, tc.wantQuota, user.Quota)
 
+			// An admin "add" is a manual top-up: it must also leave a
+			// completed TopUp order so the user sees it in Billing
+			// History. Subtract/override move the balance without any
+			// payment, so they must leave no order behind.
+			var topUps []model.TopUp
+			require.NoError(t, db.Find(&topUps).Error)
+			if tc.mode == "add" {
+				require.Len(t, topUps, 1)
+				assert.Equal(t, user.Id, topUps[0].UserId)
+				assert.EqualValues(t, tc.value, topUps[0].Amount)
+				assert.InDelta(t, float64(tc.value)/common.QuotaPerUnit, topUps[0].Money, 1e-9)
+				assert.Equal(t, model.PaymentMethodManual, topUps[0].PaymentMethod)
+				assert.Equal(t, common.TopUpStatusSuccess, topUps[0].Status)
+				assert.True(t, strings.HasPrefix(topUps[0].TradeNo, "MANUAL-"))
+				assert.Equal(t, topUps[0].CreateTime, topUps[0].CompleteTime)
+			} else {
+				assert.Empty(t, topUps)
+			}
+
 			logs, total, err := model.GetAllLogs(model.LogFilter{Type: model.LogTypeTopup}, 0, 20)
 			require.NoError(t, err)
 			assert.EqualValues(t, 1, total)
@@ -344,6 +363,9 @@ func TestManageUserQuotaFailuresDoNotRecordTopup(t *testing.T) {
 			assert.Contains(t, recorder.Body.String(), `"success":false`)
 			require.NoError(t, db.First(&user, user.Id).Error)
 			assert.Equal(t, 1000, user.Quota)
+			var topUpCount int64
+			require.NoError(t, db.Model(&model.TopUp{}).Count(&topUpCount).Error)
+			assert.Zero(t, topUpCount, "a failed adjustment must not leave a top-up order")
 			var logCount, auditCount int64
 			require.NoError(t, model.LOG_DB.Model(&model.Log{}).Count(&logCount).Error)
 			require.NoError(t, model.LOG_DB.Model(&model.AuditLog{}).Count(&auditCount).Error)
