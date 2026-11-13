@@ -143,6 +143,18 @@ func GetAllTokens(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
+// GetTokenNames returns the distinct API key names across all users, for the
+// dashboard usage-filter dropdowns. Admin only: token names reveal which keys
+// exist, so non-admins must use their own key list instead.
+func GetTokenNames(c *gin.Context) {
+	names, err := model.GetAllTokenNames()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, names)
+}
+
 func SearchTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	keyword := c.Query("keyword")

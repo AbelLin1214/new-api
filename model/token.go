@@ -114,6 +114,14 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	return tokens, err
 }
 
+// GetAllTokenNames returns the distinct API key names across all users, for
+// the dashboard usage-filter dropdowns. Soft-deleted tokens are excluded.
+func GetAllTokenNames() ([]string, error) {
+	var names []string
+	err := DB.Model(&Token{}).Distinct().Pluck("name", &names).Error
+	return names, err
+}
+
 // sanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式。
 // 规则：
 //  1. 转义 ! 和 _（使用 ! 作为 ESCAPE 字符，兼容 MySQL/PostgreSQL/SQLite）

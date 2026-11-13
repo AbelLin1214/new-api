@@ -278,15 +278,6 @@ func SetApiRouter(router *gin.Engine) {
 			taskPluginRoute.DELETE("/:key/versions/:version", controller.DeleteTaskPluginVersion)
 		}
 		handlePermissionRoute(apiRouter.Group("", middleware.AdminAuth()), http.MethodGet, "/task_plugin_options", authz.TaskPluginBind, controller.GetTaskPluginOptions)
-		// Channel editors read the instances to bind them; changing them is
-		// plugin management, as installing a plugin is.
-		handlePermissionRoute(apiRouter.Group("", middleware.AdminAuth()), http.MethodGet, "/request_plugin/instances", authz.TaskPluginBind, controller.GetRequestPluginInstances)
-		requestPluginRoute := apiRouter.Group("/request_plugin")
-		requestPluginRoute.Use(middleware.RootAuth())
-		{
-			requestPluginRoute.PUT("/instances", controller.UpdateRequestPluginInstances)
-			requestPluginRoute.POST("/dry_run", controller.DryRunRequestPlugins)
-		}
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)
 		tokenRoute := apiRouter.Group("/token")
@@ -296,6 +287,7 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.GET("/", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/auto-groups", controller.GetTokenAutoGroups)
+			tokenRoute.GET("/names", middleware.AdminAuth(), controller.GetTokenNames)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
 			tokenRoute.POST("/", controller.AddToken)
@@ -353,7 +345,6 @@ func SetApiRouter(router *gin.Engine) {
 		systemInfoRoute.Use(middleware.RootAuth())
 		{
 			systemInfoRoute.GET("/instances", controller.ListSystemInstances)
-			systemInfoRoute.GET("/sync", controller.GetNodeSync)
 			systemInfoRoute.DELETE("/stale-instances", controller.DeleteStaleSystemInstances)
 			systemInfoRoute.DELETE("/instances/:node_name", controller.DeleteStaleSystemInstance)
 		}
