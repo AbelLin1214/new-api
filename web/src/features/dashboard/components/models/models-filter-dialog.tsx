@@ -23,6 +23,8 @@ import { useTranslation } from 'react-i18next'
 import { DateTimePicker } from '@/components/datetime-picker'
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
+import type { ComboboxInputOption } from '@/components/ui/combobox-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -34,6 +36,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { getChannels } from '@/features/channels/api'
 import {
   TIME_GRANULARITY_OPTIONS,
   TIME_RANGE_PRESETS,
@@ -46,6 +49,8 @@ import type {
   DashboardChartPreferences,
   DashboardFilters,
 } from '@/features/dashboard/types'
+import { getApiKeys, getTokenNames } from '@/features/keys/api'
+import { getUserModels } from '@/lib/api'
 import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
@@ -113,6 +118,52 @@ export function ModelsFilter(props: ModelsFilterProps) {
   const [selectedRange, setSelectedRange] = useState<number | null>(() =>
     detectQuickRangeDays(props.currentFilters)
   )
+  // Dropdown options for the usage filters. They are loaded when the dialog
+  // opens so the lists are fresh; a failed fetch leaves the combobox with no
+  // suggestions, but custom values can still be typed in.
+  const [filterOptions, setFilterOptions] = useState<{
+    models: ComboboxInputOption[]
+    tokenNames: ComboboxInputOption[]
+    channels: ComboboxInputOption[]
+  }>({ models: [], tokenNames: [], channels: [] })
+
+  const loadFilterOptions = async () => {
+    const toOptions = (values: string[]): ComboboxInputOption[] =>
+      [...new Set(values)].sort().map((value) => ({ value, label: value }))
+    const [modelsResult, tokensResult, channelsResult] =
+      await Promise.allSettled([
+        getUserModels(),
+        isAdmin
+          ? getTokenNames()
+          : getApiKeys({ p: 1, size: 100 }).then(
+              (res) => res.data?.items.map((item) => item.name) ?? []
+            ),
+        isAdmin
+          ? getChannels({ p: 1, page_size: 100 }).then((res) =>
+              (res.data?.items ?? []).map((channel) => ({
+                value: String(channel.id),
+                label: `${channel.name} (#${channel.id})`,
+              }))
+            )
+          : Promise.resolve([] as ComboboxInputOption[]),
+      ])
+    setFilterOptions({
+      models:
+        modelsResult.status === 'fulfilled' && modelsResult.value.success
+          ? toOptions(modelsResult.value.data ?? [])
+          : [],
+      tokenNames:
+        tokensResult.status === 'fulfilled'
+          ? toOptions(
+              Array.isArray(tokensResult.value)
+                ? tokensResult.value
+                : (tokensResult.value.data ?? [])
+            )
+          : [],
+      channels:
+        channelsResult.status === 'fulfilled' ? channelsResult.value : [],
+    })
+  }
 
   const handleOpenChange = (nextOpen: boolean) => {
     // Sync the editing state from the applied filters every time the dialog
@@ -122,6 +173,9 @@ export function ModelsFilter(props: ModelsFilterProps) {
         props.currentFilters ?? buildDefaultDashboardFilters(props.preferences)
       setFilters(applied)
       setSelectedRange(detectQuickRangeDays(applied))
+      if (props.showModelTokenFilters) {
+        void loadFilterOptions()
+      }
     }
     setOpen(nextOpen)
   }
@@ -309,21 +363,31 @@ export function ModelsFilter(props: ModelsFilterProps) {
 
               <div className='grid gap-2'>
                 <Label htmlFor='model_name'>{t('Model')}</Label>
-                <Input
+                <Combobox
                   id='model_name'
-                  placeholder={t('Filter by model name')}
-                  value={filters.model_name}
-                  onChange={(e) => handleChange('model_name', e.target.value)}
+                  options={filterOptions.models}
+                  allowCustomValue
+                  emptyText={t('No model found.')}
+                  placeholder={t('Select or type a model')}
+                  value={filters.model_name ?? ''}
+                  onValueChange={(value) =>
+                    handleChange('model_name', value || undefined)
+                  }
                 />
               </div>
 
               <div className='grid gap-2'>
                 <Label htmlFor='token_name'>{t('API Key')}</Label>
-                <Input
+                <Combobox
                   id='token_name'
-                  placeholder={t('Filter by API key name')}
-                  value={filters.token_name}
-                  onChange={(e) => handleChange('token_name', e.target.value)}
+                  options={filterOptions.tokenNames}
+                  allowCustomValue
+                  emptyText={t('No API key found.')}
+                  placeholder={t('Select or type an API key')}
+                  value={filters.token_name ?? ''}
+                  onValueChange={(value) =>
+                    handleChange('token_name', value || undefined)
+                  }
                 />
               </div>
 
@@ -333,17 +397,17 @@ export function ModelsFilter(props: ModelsFilterProps) {
               {isAdmin && (
                 <div className='grid gap-2'>
                   <Label htmlFor='channel'>{t('Channel')}</Label>
-                  <Input
+                  <Combobox
                     id='channel'
-                    placeholder={t('Filter by channel ID')}
+                    options={filterOptions.channels}
+                    emptyText={t('No channel found.')}
+                    placeholder={t('Select a channel')}
                     value={filters.channel ? String(filters.channel) : ''}
-                    onChange={(e) => {
-                      const value = Number(e.target.value)
+                    onValueChange={(value) => {
+                      const num = Number(value)
                       handleChange(
                         'channel',
-                        e.target.value === '' || Number.isNaN(value)
-                          ? undefined
-                          : value
+                        !value || Number.isNaN(num) ? undefined : num
                       )
                     }}
                   />
