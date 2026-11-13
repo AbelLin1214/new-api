@@ -32,6 +32,17 @@ import type {
 // API Key Management
 // ============================================================================
 
+// Get distinct API key names across all users (admin only), for the
+// dashboard usage-filter dropdown.
+export async function getTokenNames(): Promise<{
+  success: boolean
+  message?: string
+  data?: string[]
+}> {
+  const res = await api.get('/api/token/names')
+  return res.data
+}
+
 // Get paginated API keys list
 export async function getApiKeys(
   params: GetApiKeysParams = {}
