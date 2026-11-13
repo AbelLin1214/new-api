@@ -20,6 +20,11 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getChannels } from '@/features/channels/api'
+import type { Channel } from '@/features/channels/types'
+import { getApiKeys, getTokenNames } from '@/features/keys/api'
+import type { ApiKey } from '@/features/keys/types'
+import { getUserModels } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import type {
@@ -27,6 +32,22 @@ import type {
   DashboardFilters,
 } from '../../../types'
 import { ModelsFilter } from '../models-filter-dialog'
+
+// The dialog fetches its dropdown options from the APIs; stub them so the
+// tests do not hit the network. Other exports of these modules stay intact.
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api')>()),
+  getUserModels: vi.fn(),
+}))
+vi.mock('@/features/keys/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/keys/api')>()),
+  getApiKeys: vi.fn(),
+  getTokenNames: vi.fn(),
+}))
+vi.mock('@/features/channels/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/channels/api')>()),
+  getChannels: vi.fn(),
+}))
 
 // jsdom has no Element.getAnimations; Base UI's ScrollArea (used by the
 // dialog) calls it on a timer, which otherwise surfaces as an unhandled
@@ -59,6 +80,33 @@ function buildFilters(
 }
 
 beforeEach(() => {
+  vi.clearAllMocks()
+  vi.mocked(getUserModels).mockResolvedValue({
+    success: true,
+    data: ['gpt-6.1-sol', 'claude-fable-5-2'],
+  })
+  vi.mocked(getTokenNames).mockResolvedValue({
+    success: true,
+    data: ['cpa-gpt', 'cpa-claude'],
+  })
+  vi.mocked(getApiKeys).mockResolvedValue({
+    success: true,
+    data: {
+      items: [{ id: 7, name: 'cpa-gpt' } as ApiKey],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    },
+  })
+  vi.mocked(getChannels).mockResolvedValue({
+    success: true,
+    data: {
+      items: [{ id: 2, name: 'urtoken-sohan-claude' } as Channel],
+      total: 1,
+      page: 1,
+      page_size: 100,
+    },
+  })
   useAuthStore.getState().auth.setUser({
     id: 1,
     username: 'dashboard-user',
@@ -70,7 +118,7 @@ beforeEach(() => {
 })
 
 describe('ModelsFilter model and API key fields', () => {
-  it('shows model and API key inputs for model analytics and applies them', async () => {
+  it('shows model and API key dropdowns for model analytics and applies them', async () => {
     const user = userEvent.setup()
     const onFilterChange = vi.fn()
     render(
@@ -93,8 +141,10 @@ describe('ModelsFilter model and API key fields', () => {
     expect(modelInput).toHaveValue('gpt-6.1-sol')
     expect(tokenInput).toHaveValue('cpa-gpt')
 
-    await user.clear(modelInput)
-    await user.type(modelInput, 'claude-fable-5-2')
+    await user.click(modelInput)
+    await user.click(
+      await screen.findByRole('option', { name: 'claude-fable-5-2' })
+    )
     await user.click(screen.getByRole('button', { name: 'Apply Filters' }))
 
     expect(onFilterChange).toHaveBeenCalledTimes(1)
@@ -103,6 +153,33 @@ describe('ModelsFilter model and API key fields', () => {
         model_name: 'claude-fable-5-2',
         token_name: 'cpa-gpt',
       })
+    )
+  })
+
+  it('still accepts a typed model name not present in the dropdown', async () => {
+    const user = userEvent.setup()
+    const onFilterChange = vi.fn()
+    render(
+      <ModelsFilter
+        preferences={preferences}
+        currentFilters={buildFilters()}
+        onFilterChange={onFilterChange}
+        onReset={vi.fn()}
+        showModelTokenFilters
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Filter' }))
+
+    const modelInput = await screen.findByLabelText('Model')
+    await user.click(modelInput)
+    await user.type(modelInput, 'some-retired-model')
+    await user.keyboard('{Enter}')
+    await user.click(screen.getByRole('button', { name: 'Apply Filters' }))
+
+    expect(onFilterChange).toHaveBeenCalledTimes(1)
+    expect(onFilterChange).toHaveBeenCalledWith(
+      expect.objectContaining({ model_name: 'some-retired-model' })
     )
   })
 
@@ -124,7 +201,7 @@ describe('ModelsFilter model and API key fields', () => {
     expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
   })
 
-  it('shows the channel input only to admins and applies it', async () => {
+  it('shows the channel dropdown only to admins and applies it', async () => {
     const user = userEvent.setup()
     useAuthStore.getState().auth.setUser({
       id: 9,
@@ -148,7 +225,12 @@ describe('ModelsFilter model and API key fields', () => {
     await user.click(screen.getByRole('button', { name: 'Filter' }))
 
     const channelInput = await screen.findByLabelText('Channel')
-    await user.type(channelInput, '2')
+    await user.click(channelInput)
+    await user.click(
+      await screen.findByRole('option', {
+        name: 'urtoken-sohan-claude (#2)',
+      })
+    )
     await user.click(screen.getByRole('button', { name: 'Apply Filters' }))
 
     expect(onFilterChange).toHaveBeenCalledTimes(1)
