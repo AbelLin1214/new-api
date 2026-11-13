@@ -42,6 +42,7 @@ export async function getUserQuotaDates(
     username?: string
     model_name?: string
     token_name?: string
+    channel?: number
   },
   isAdmin = false
 ) {

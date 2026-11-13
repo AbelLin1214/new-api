@@ -150,7 +150,7 @@ export function ModelsFilter(props: ModelsFilterProps) {
 
   const handleChange = (
     field: keyof DashboardFilters,
-    value: Date | string | undefined
+    value: Date | string | number | undefined
   ) => {
     setFilters((prev) => ({ ...prev, [field]: value }))
     if (field === 'start_timestamp' || field === 'end_timestamp') {
@@ -183,7 +183,7 @@ export function ModelsFilter(props: ModelsFilterProps) {
       title={t(props.titleKey ?? 'Model Analytics Filters')}
       description={t(
         props.descriptionKey ??
-          'Filter the model analytics view by time range, user, model, and API key.'
+          'Filter the model analytics view by time range, user, model, API key, and channel.'
       )}
       contentClassName='max-sm:h-dvh max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-lg'
       contentHeight='min(48vh, 460px)'
@@ -313,9 +313,7 @@ export function ModelsFilter(props: ModelsFilterProps) {
                   id='model_name'
                   placeholder={t('Filter by model name')}
                   value={filters.model_name}
-                  onChange={(e) =>
-                    handleChange('model_name', e.target.value)
-                  }
+                  onChange={(e) => handleChange('model_name', e.target.value)}
                 />
               </div>
 
@@ -325,11 +323,32 @@ export function ModelsFilter(props: ModelsFilterProps) {
                   id='token_name'
                   placeholder={t('Filter by API key name')}
                   value={filters.token_name}
-                  onChange={(e) =>
-                    handleChange('token_name', e.target.value)
-                  }
+                  onChange={(e) => handleChange('token_name', e.target.value)}
                 />
               </div>
+
+              {/* Channel filtering is admin-only: the self endpoint
+                  ignores the channel parameter, so non-admins cannot
+                  filter by channel even if the value is supplied. */}
+              {isAdmin && (
+                <div className='grid gap-2'>
+                  <Label htmlFor='channel'>{t('Channel')}</Label>
+                  <Input
+                    id='channel'
+                    placeholder={t('Filter by channel ID')}
+                    value={filters.channel ? String(filters.channel) : ''}
+                    onChange={(e) => {
+                      const value = Number(e.target.value)
+                      handleChange(
+                        'channel',
+                        e.target.value === '' || Number.isNaN(value)
+                          ? undefined
+                          : value
+                      )
+                    }}
+                  />
+                </div>
+              )}
             </>
           )}
         </div>

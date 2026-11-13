@@ -14,20 +14,20 @@ func seedQuotaDatesFilterData(t *testing.T) {
 	require.NoError(t, DB.Create(&Token{Id: 11, UserId: 1, Key: "sk-alice-gpt", Name: "cpa-gpt"}).Error)
 	require.NoError(t, DB.Create(&Token{Id: 12, UserId: 1, Key: "sk-alice-claude", Name: "cpa-claude"}).Error)
 	require.NoError(t, DB.Create(&Token{Id: 21, UserId: 2, Key: "sk-bob-gpt", Name: "cpa-gpt"}).Error)
-	seedFlowQuotaData(t, QuotaData{UserID: 1, Username: "alice", ModelName: "gpt-6.1-sol", TokenID: 11, CreatedAt: 1000, Count: 10, Quota: 100, TokenUsed: 50})
-	seedFlowQuotaData(t, QuotaData{UserID: 1, Username: "alice", ModelName: "claude-fable-5-2", TokenID: 12, CreatedAt: 1100, Count: 5, Quota: 200, TokenUsed: 30})
-	seedFlowQuotaData(t, QuotaData{UserID: 2, Username: "bob", ModelName: "gpt-6.1-sol", TokenID: 21, CreatedAt: 1200, Count: 7, Quota: 70, TokenUsed: 20})
+	seedFlowQuotaData(t, QuotaData{UserID: 1, Username: "alice", ModelName: "gpt-6.1-sol", TokenID: 11, ChannelID: 1, CreatedAt: 1000, Count: 10, Quota: 100, TokenUsed: 50})
+	seedFlowQuotaData(t, QuotaData{UserID: 1, Username: "alice", ModelName: "claude-fable-5-2", TokenID: 12, ChannelID: 2, CreatedAt: 1100, Count: 5, Quota: 200, TokenUsed: 30})
+	seedFlowQuotaData(t, QuotaData{UserID: 2, Username: "bob", ModelName: "gpt-6.1-sol", TokenID: 21, ChannelID: 1, CreatedAt: 1200, Count: 7, Quota: 70, TokenUsed: 20})
 }
 
 func TestGetAllQuotaDatesFiltersByModelAndToken(t *testing.T) {
 	truncateTables(t)
 	seedQuotaDatesFilterData(t)
 
-	rows, err := GetAllQuotaDates(0, 2000, "", "", "")
+	rows, err := GetAllQuotaDates(0, 2000, "", "", "", 0)
 	require.NoError(t, err)
 	assert.Len(t, rows, 3)
 
-	rows, err = GetAllQuotaDates(0, 2000, "", "gpt-6.1-sol", "")
+	rows, err = GetAllQuotaDates(0, 2000, "", "gpt-6.1-sol", "", 0)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	assert.Equal(t, "gpt-6.1-sol", rows[0].ModelName)
@@ -35,27 +35,48 @@ func TestGetAllQuotaDatesFiltersByModelAndToken(t *testing.T) {
 
 	// "cpa-gpt" is a key name held by both users; without a username the
 	// filter matches both keys.
-	rows, err = GetAllQuotaDates(0, 2000, "", "", "cpa-gpt")
+	rows, err = GetAllQuotaDates(0, 2000, "", "", "cpa-gpt", 0)
 	require.NoError(t, err)
 	assert.Len(t, rows, 2)
 
 	// With a username the same key name narrows to that user's key only.
-	rows, err = GetAllQuotaDates(0, 2000, "alice", "", "cpa-gpt")
+	rows, err = GetAllQuotaDates(0, 2000, "alice", "", "cpa-gpt", 0)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, "gpt-6.1-sol", rows[0].ModelName)
 	assert.Equal(t, 100, rows[0].Quota)
 
-	rows, err = GetAllQuotaDates(0, 2000, "alice", "claude-fable-5-2", "cpa-claude")
+	rows, err = GetAllQuotaDates(0, 2000, "alice", "claude-fable-5-2", "cpa-claude", 0)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, 200, rows[0].Quota)
 
-	rows, err = GetAllQuotaDates(0, 2000, "", "", "no-such-key")
+	rows, err = GetAllQuotaDates(0, 2000, "", "", "no-such-key", 0)
 	require.NoError(t, err)
 	assert.Empty(t, rows)
 
-	rows, err = GetAllQuotaDates(0, 2000, "", "no-such-model", "")
+	rows, err = GetAllQuotaDates(0, 2000, "", "no-such-model", "", 0)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
+
+	// Channel filtering is admin-only and applies to both the all-users
+	// view and the per-user view.
+	rows, err = GetAllQuotaDates(0, 2000, "", "", "", 1)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.ElementsMatch(t, []int{100, 70}, []int{rows[0].Quota, rows[1].Quota})
+
+	rows, err = GetAllQuotaDates(0, 2000, "", "", "", 2)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "claude-fable-5-2", rows[0].ModelName)
+
+	rows, err = GetAllQuotaDates(0, 2000, "alice", "", "", 1)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "gpt-6.1-sol", rows[0].ModelName)
+
+	rows, err = GetAllQuotaDates(0, 2000, "", "", "", 99)
 	require.NoError(t, err)
 	assert.Empty(t, rows)
 }

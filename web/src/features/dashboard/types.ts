@@ -193,6 +193,8 @@ export interface DashboardFilters {
   username?: string
   model_name?: string
   token_name?: string
+  // Admin-only: the self endpoint ignores it, so only admins can filter by channel.
+  channel?: number
 }
 
 export type ConsumptionDistributionChartType = 'bar' | 'area'

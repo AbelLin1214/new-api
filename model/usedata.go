@@ -148,7 +148,7 @@ func increaseQuotaData(quotaData *QuotaData) {
 	}
 }
 
-func GetQuotaDataByUsername(username string, startTime int64, endTime int64, modelName string, tokenName string) (quotaData []*QuotaData, err error) {
+func GetQuotaDataByUsername(username string, startTime int64, endTime int64, modelName string, tokenName string, channel int) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
 	tx := DB.Table("quota_data").
@@ -157,6 +157,9 @@ func GetQuotaDataByUsername(username string, startTime int64, endTime int64, mod
 		Group("user_id, username, model_name, created_at")
 	if modelName != "" {
 		tx = tx.Where("model_name = ?", modelName)
+	}
+	if channel != 0 {
+		tx = tx.Where("channel_id = ?", channel)
 	}
 	if tokenName != "" {
 		ids, err := tokenIDsByNameForUser(tokenName, username)
@@ -233,9 +236,9 @@ func GetQuotaDataGroupByUser(startTime int64, endTime int64) (quotaData []*Quota
 	return quotaDatas, err
 }
 
-func GetAllQuotaDates(startTime int64, endTime int64, username string, modelName string, tokenName string) (quotaData []*QuotaData, err error) {
+func GetAllQuotaDates(startTime int64, endTime int64, username string, modelName string, tokenName string, channel int) (quotaData []*QuotaData, err error) {
 	if username != "" {
-		return GetQuotaDataByUsername(username, startTime, endTime, modelName, tokenName)
+		return GetQuotaDataByUsername(username, startTime, endTime, modelName, tokenName, channel)
 	}
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
@@ -244,6 +247,9 @@ func GetAllQuotaDates(startTime int64, endTime int64, username string, modelName
 	tx := DB.Table("quota_data").Select("model_name, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used, sum(cache_read_tokens) as cache_read_tokens, sum(cache_creation_tokens) as cache_creation_tokens, created_at").Where("created_at >= ? and created_at <= ?", startTime, endTime).Group("model_name, created_at")
 	if modelName != "" {
 		tx = tx.Where("model_name = ?", modelName)
+	}
+	if channel != 0 {
+		tx = tx.Where("channel_id = ?", channel)
 	}
 	if tokenName != "" {
 		ids, err := tokenIDsByName(tokenName, 0)

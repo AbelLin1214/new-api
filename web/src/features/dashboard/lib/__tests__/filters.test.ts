@@ -30,6 +30,7 @@ describe('buildQueryParams', () => {
         username: 'alice',
         model_name: 'gpt-6.1-sol',
         token_name: 'cpa-gpt',
+        channel: 2,
       })
     ).toEqual({
       start_timestamp: 1000,
@@ -38,7 +39,16 @@ describe('buildQueryParams', () => {
       username: 'alice',
       model_name: 'gpt-6.1-sol',
       token_name: 'cpa-gpt',
+      channel: 2,
     })
+  })
+
+  it('omits the channel filter when it is unset', () => {
+    const params = buildQueryParams(timeRange, {
+      time_granularity: 'day',
+      channel: 0,
+    })
+    expect(params).not.toHaveProperty('channel')
   })
 
   it('omits model and API key filters when they are empty', () => {

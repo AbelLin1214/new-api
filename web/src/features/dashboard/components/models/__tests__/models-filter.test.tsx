@@ -22,11 +22,11 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
 
-import { ModelsFilter } from '../models-filter-dialog'
 import type {
   DashboardChartPreferences,
   DashboardFilters,
 } from '../../../types'
+import { ModelsFilter } from '../models-filter-dialog'
 
 // jsdom has no Element.getAnimations; Base UI's ScrollArea (used by the
 // dialog) calls it on a timer, which otherwise surfaces as an unhandled
@@ -47,7 +47,9 @@ const preferences: DashboardChartPreferences = {
   defaultTimeGranularity: 'day',
 }
 
-function buildFilters(overrides: Partial<DashboardFilters> = {}): DashboardFilters {
+function buildFilters(
+  overrides: Partial<DashboardFilters> = {}
+): DashboardFilters {
   return {
     start_timestamp: new Date('2026-11-10T00:00:00Z'),
     end_timestamp: new Date('2026-11-13T00:00:00Z'),
@@ -120,5 +122,56 @@ describe('ModelsFilter model and API key fields', () => {
 
     expect(screen.queryByLabelText('Model')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
+  })
+
+  it('shows the channel input only to admins and applies it', async () => {
+    const user = userEvent.setup()
+    useAuthStore.getState().auth.setUser({
+      id: 9,
+      username: 'hopai',
+      role: 100,
+      quota: 1000000,
+      used_quota: 1000,
+      request_count: 1,
+    })
+    const onFilterChange = vi.fn()
+    render(
+      <ModelsFilter
+        preferences={preferences}
+        currentFilters={buildFilters()}
+        onFilterChange={onFilterChange}
+        onReset={vi.fn()}
+        showModelTokenFilters
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Filter' }))
+
+    const channelInput = await screen.findByLabelText('Channel')
+    await user.type(channelInput, '2')
+    await user.click(screen.getByRole('button', { name: 'Apply Filters' }))
+
+    expect(onFilterChange).toHaveBeenCalledTimes(1)
+    expect(onFilterChange).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: 2 })
+    )
+  })
+
+  it('hides the channel input from non-admin users', async () => {
+    const user = userEvent.setup()
+    render(
+      <ModelsFilter
+        preferences={preferences}
+        currentFilters={buildFilters()}
+        onFilterChange={vi.fn()}
+        onReset={vi.fn()}
+        showModelTokenFilters
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Filter' }))
+    await screen.findByLabelText('Model')
+
+    expect(screen.queryByLabelText('Channel')).not.toBeInTheDocument()
   })
 })

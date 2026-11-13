@@ -34,7 +34,8 @@ func GetAllQuotaDates(c *gin.Context) {
 	username := c.Query("username")
 	modelName := c.Query("model_name")
 	tokenName := c.Query("token_name")
-	dates, err := model.GetAllQuotaDates(startTimestamp, endTimestamp, username, modelName, tokenName)
+	channel, _ := strconv.Atoi(c.Query("channel"))
+	dates, err := model.GetAllQuotaDates(startTimestamp, endTimestamp, username, modelName, tokenName, channel)
 	if err != nil {
 		common.ApiError(c, err)
 		return

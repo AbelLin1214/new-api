@@ -159,6 +159,7 @@ export function buildQueryParams(
     username?: string
     model_name?: string
     token_name?: string
+    channel?: number
   }
 ): {
   start_timestamp: number
@@ -167,6 +168,7 @@ export function buildQueryParams(
   username?: string
   model_name?: string
   token_name?: string
+  channel?: number
 } {
   return {
     ...timeRange,
@@ -174,5 +176,6 @@ export function buildQueryParams(
     ...(filters?.username && { username: filters.username }),
     ...(filters?.model_name && { model_name: filters.model_name }),
     ...(filters?.token_name && { token_name: filters.token_name }),
+    ...(filters?.channel ? { channel: filters.channel } : {}),
   }
 }
